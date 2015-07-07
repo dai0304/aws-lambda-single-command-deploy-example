@@ -1,0 +1,89 @@
+// -*- coding: utf-8; mode: groovy -*-
+
+import com.amazonaws.*;
+import com.amazonaws.services.lambda.model.*;
+import jp.classmethod.aws.gradle.lambda.AWSLambdaDeleteFunctionTask;
+import jp.classmethod.aws.gradle.lambda.AWSLambdaInvokeTask;
+import jp.classmethod.aws.gradle.lambda.AWSLambdaMigrateFunctionTask;
+
+buildscript {
+	repositories {
+		mavenCentral()
+		maven { url 'http://public-maven.classmethod.info/release' }
+	}
+	dependencies {
+		classpath "jp.classmethod.aws:gradle-aws-plugin:0.18.1"
+	}
+}
+
+group = "jp.classmethod.aws.example"
+version = "0.1-SNAPSHOT"
+
+ext.artifactId = "aws-lambda-single-command-deploy-example"
+ext.functionName = "base64encoder"
+
+apply plugin: "java"
+apply plugin: "aws-lambda"
+
+ext.defaultEncoding = "UTF-8"
+sourceCompatibility = targetCompatibility = 1.8
+tasks.withType(AbstractCompile) each {
+	it.options.encoding = ext.defaultEncoding
+}
+
+compileJava {
+	options.compilerArgs << "-Xlint:deprecation"
+}
+
+javadoc {
+	failOnError false
+}
+
+// ======== libraries ========
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	compile 'com.amazonaws:aws-lambda-java-core:1.0.0'
+	compile 'com.google.guava:guava:18.0'
+}
+
+// ======== bundle ========
+jar {
+	into('lib') {
+		from configurations.compile
+	}
+}
+
+// ======== deploy ========
+aws {
+	profileName "default"
+	region "ap-northeast-1"
+}
+
+task migrateFunction(type: AWSLambdaMigrateFunctionTask, dependsOn: build) {
+	functionName = project.functionName
+	role = "arn:aws:iam::${aws.accountId}:role/lambda-poweruser"
+	runtime = Runtime.Java8
+	zipFile = jar.archivePath
+	handler = "jp.classmethod.aws.sample.lambda.Base64Encoder"
+}
+
+task invokeFunction(type: AWSLambdaInvokeTask) {
+	functionName = project.functionName
+	invocationType = InvocationType.RequestResponse
+	payload = file("src/test/resources/input.txt")
+	doLast {
+		println "Lambda function result: " + new String(invokeResult.payload.array(), "UTF-8")
+	}
+}
+
+task deleteFunction(type: AWSLambdaDeleteFunctionTask) {
+	functionName = project.functionName
+}
+
+// ======== wrapper ========
+task wrapper(type: Wrapper) {
+	gradleVersion = '2.4'
+}
